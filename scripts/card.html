@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 1080px;
+      height: 620px;
+      margin: 0;
+      padding: 0;
+      background: #01140e;
+      font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card-container {
+      width: 1080px;
+      height: 620px;
+      background: radial-gradient(circle at 85% 15%, rgba(16, 185, 129, 0.22) 0%, transparent 45%),
+                  radial-gradient(circle at 15% 85%, rgba(4, 120, 87, 0.25) 0%, transparent 45%),
+                  linear-gradient(135deg, #064e3b 0%, #022c22 55%, #01140e 100%);
+      border: 2px solid rgba(245, 158, 11, 0.55);
+      border-radius: 28px;
+      padding: 24px 36px 20px 36px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 0 40px rgba(16, 185, 129, 0.12);
+    }
+    /* Header Bar */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 2;
+    }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-logo {
+      width: 60px;
+      height: 60px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #10b981, #047857);
+      border: 1.5px solid rgba(255, 255, 255, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+    }
+    .brand-text h1 {
+      font-size: 27px;
+      font-weight: 900;
+      color: #ffffff;
+      line-height: 1.1;
+      letter-spacing: -0.5px;
+    }
+    .brand-text p {
+      font-size: 13px;
+      color: #a7f3d0;
+      font-weight: 700;
+      margin-top: 3px;
+    }
+    .badge-vip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid rgba(16, 185, 129, 0.5);
+      border-radius: 20px;
+      color: #6ee7b7;
+      font-size: 11.5px;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 10px #10b981;
+    }
+
+    /* Features Strip */
+    .features-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      background: rgba(2, 44, 34, 0.75);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 14px;
+      padding: 8px 16px;
+      position: relative;
+      z-index: 2;
+    }
+    .feature-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #ecfdf5;
+      white-space: nowrap;
+    }
+
+    /* QR Grid */
+    .qr-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+      position: relative;
+      z-index: 2;
+    }
+    .qr-card {
+      background: linear-gradient(135deg, rgba(6, 78, 59, 0.7), rgba(2, 44, 34, 0.9));
+      border: 1.5px solid rgba(16, 185, 129, 0.45);
+      border-radius: 20px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(16, 185, 129, 0.1);
+    }
+    .qr-img-box {
+      width: 135px;
+      height: 135px;
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+      flex-shrink: 0;
+    }
+    .qr-img-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .qr-info {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .qr-info .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.25);
+      border: 1px solid rgba(16, 185, 129, 0.5);
+      color: #a7f3d0;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 20px;
+      width: fit-content;
+    }
+    .qr-info h3 {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      line-height: 1.3;
+    }
+    .qr-info p {
+      font-size: 11.5px;
+      color: #f59e0b;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      direction: ltr;
+      text-align: right;
+    }
+
+    /* Footer Info & Contacts */
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(2, 44, 34, 0.9);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 14px;
+      padding: 9px 18px;
+      font-size: 11.5px;
+      position: relative;
+      z-index: 2;
+    }
+    .contacts-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .contact-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #ffffff;
+      font-family: 'JetBrains Mono', sans-serif;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .contact-item .lbl {
+      color: #f59e0b;
+      font-family: 'Cairo', sans-serif;
+      font-weight: 700;
+    }
+    .location-box {
+      color: #a7f3d0;
+      font-weight: 700;
+      font-size: 11.5px;
+    }
+
+    /* Developer Watermark */
+    .watermark {
+      text-align: center;
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #fbbf24;
+      letter-spacing: 0.4px;
+      position: relative;
+      z-index: 2;
+      padding-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="brand-wrap">
+        <div class="brand-logo">🛒</div>
+        <div class="brand-text">
+          <h1>سوبر ماركت أولاد الشافعي</h1>
+          <p>سوبر ماركت • أجبان ولحوم طازجة • خضروات وفاكهة • بقالة ومؤن</p>
+        </div>
+      </div>
+      <div class="badge-vip">
+        <div class="badge-dot"></div>
+        <span>SMART VIP CARD • 2026</span>
+      </div>
+    </div>
+
+    <!-- Features Strip -->
+    <div class="features-strip">
+      <div class="feature-item">
+        <span>⚖️</span>
+        <span>بيع بالوزن أو بالمبلغ المفتوح</span>
+      </div>
+      <div class="feature-item">
+        <span>🛵</span>
+        <span>توصيل سوبر سريع بـ 6 أكتوبر</span>
+      </div>
+      <div class="feature-item">
+        <span>🧀</span>
+        <span>أجبان ولحوم بلدية طازجة يومياً</span>
+      </div>
+      <div class="feature-item">
+        <span>💳</span>
+        <span>دفع كاش • فيزا • إنستاباي</span>
+      </div>
+    </div>
+
+    <!-- Dual QR Codes -->
+    <div class="qr-grid">
+      <!-- Website QR -->
+      <div class="qr-card">
+        <div class="qr-img-box">
+          <img src="data:image/png;base64,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" alt="Website QR">
+        </div>
+        <div class="qr-info">
+          <span class="pill">🌐 المتجر الإلكتروني</span>
+          <h3>تسوق أونلاين وتوصيل فوري</h3>
+          <p>elshafie.vercel.app</p>
+        </div>
+      </div>
+
+      <!-- App QR -->
+      <div class="qr-card">
+        <div class="qr-img-box">
+          <img src="data:image/png;base64,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" alt="APK Download QR">
+        </div>
+        <div class="qr-info">
+          <span class="pill">📲 التطبيق الذكي</span>
+          <h3>تحميل تطبيق الأندرويد الرسمي</h3>
+          <p>elshafie.apk (v1.0.0)</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contacts & Location -->
+    <div class="footer">
+      <div class="contacts-row">
+        <div class="contact-item">
+          <span class="lbl">مبيعات وطلبات:</span>
+          <span>01032104457</span>
+        </div>
+        <div class="contact-item">
+          <span class="lbl">إدارة وواتساب:</span>
+          <span>0111871017</span>
+        </div>
+      </div>
+      <div class="location-box">
+        <span>📍 الحي السادس — مدينة السادس من أكتوبر — الجيزة</span>
+      </div>
+    </div>
+
+    <!-- Developer Watermark -->
+    <div class="watermark">
+      تم التطوير بواسطة شركة أوركا لتقنية المعلومات — 01018671000
+    </div>
+  </div>
+</body>
+</html>
