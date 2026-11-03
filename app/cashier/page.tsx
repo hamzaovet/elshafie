@@ -21,10 +21,16 @@ import {
   Calculator,
   ArrowRight,
   Coins,
-  Edit2,
+  Camera,
+  Share2,
+  Zap,
+  Phone,
+  ArrowLeft,
+  Smartphone,
 } from "lucide-react";
 import BarcodeEan13 from "@/components/BarcodeEan13";
 import { parseScaleBarcode } from "@/lib/barcode";
+import CameraBarcodeScanner from "@/components/CameraBarcodeScanner";
 
 export default function CashierPOSPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -39,6 +45,12 @@ export default function CashierPOSPage() {
   const [tenderCash, setTenderCash] = useState<string>("");
   const [lastScannedMsg, setLastScannedMsg] = useState<string>("");
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+
+  // Mobile Views: "products" | "cart"
+  const [mobileView, setMobileView] = useState<"products" | "cart">("products");
+
+  // Camera Barcode Scanner State
+  const [cameraScannerOpen, setCameraScannerOpen] = useState(false);
 
   // Weight & Open-Amount Modal State (البيع بالمبلغ المالي أو الوزن المباشر)
   const [weighModalOpen, setWeighModalOpen] = useState(false);
@@ -77,12 +89,16 @@ export default function CashierPOSPage() {
     fetchData();
   }, []);
 
-  // Keyboard Shortcuts (F4 for Weight Modal, F9 or Enter on modal prints)
+  // Keyboard Shortcuts (F4 for Weight Modal, F9 / Enter / Esc)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "F4") {
         e.preventDefault();
         openGenericWeighModal();
+      }
+      if (e.key === "F2") {
+        e.preventDefault();
+        setCameraScannerOpen((prev) => !prev);
       }
       if (completedOrder) {
         if (e.key === "Enter" || e.key === "F9") {
@@ -90,8 +106,7 @@ export default function CashierPOSPage() {
           window.print();
         } else if (e.key === "Escape") {
           e.preventDefault();
-          setCompletedOrder(null);
-          setTenderCash("");
+          handleFinishAndNewOrder();
         }
       }
     };
@@ -135,7 +150,6 @@ export default function CashierPOSPage() {
 
   const handleProductClick = (product: any) => {
     if (product.isWeighted) {
-      // Open weight & open-amount modal
       setSelectedWeighProduct(product);
       setWeighMode("amount");
       setInputAmount("50");
@@ -143,6 +157,7 @@ export default function CashierPOSPage() {
       setWeighModalOpen(true);
     } else {
       addToCart(product, 1);
+      setLastScannedMsg(`📦 تم إضافة: ${product.nameAr}`);
     }
   };
 
@@ -179,7 +194,7 @@ export default function CashierPOSPage() {
     addToCart(selectedWeighProduct, qtyInKg, note);
     setWeighModalOpen(false);
     setSelectedWeighProduct(null);
-    setLastScannedMsg(`⚖️ تم إضافة صنف بالوزن/المبلغ: ${selectedWeighProduct.nameAr} (${note})`);
+    setLastScannedMsg(`⚖️ تم إضافة بالوزن/المبلغ: ${selectedWeighProduct.nameAr} (${note})`);
   };
 
   const updateQty = (productId: string, delta: number) => {
@@ -202,12 +217,12 @@ export default function CashierPOSPage() {
     setCart((prev) => prev.filter((i) => i.product.id !== productId));
   };
 
-  const handleBarcodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const query = barcodeQuery.trim();
-    if (!query) return;
+  // Universal Barcode Processor (Works with USB Scanners, Manual Input, and Phone Camera)
+  const processBarcode = (rawCode: string): boolean => {
+    const query = rawCode.trim();
+    if (!query) return false;
 
-    // Check if it's an EAN-13 scale barcode (weight or price embedded)
+    // 1. Check if it's an EAN-13 digital scale barcode (20xxxxx or 22xxxxx)
     const scaleResult = parseScaleBarcode(query, {
       weightPrefixes: settings?.weightPrefixes || "20,21",
       pricePrefixes: settings?.pricePrefixes || "22,23",
@@ -215,7 +230,6 @@ export default function CashierPOSPage() {
     });
 
     if (scaleResult.isScaleBarcode && scaleResult.plu) {
-      // Find product by scaleItemCode or barcode
       const foundWeighted = products.find(
         (p) =>
           p.scaleItemCode === scaleResult.plu ||
@@ -226,24 +240,20 @@ export default function CashierPOSPage() {
       if (foundWeighted) {
         if (scaleResult.mode === "weight" && scaleResult.weightKg) {
           addToCart(foundWeighted, scaleResult.weightKg, `ميزان باركود (${scaleResult.weightKg} كجم)`);
-          setLastScannedMsg(
-            `⚖️ استيكر ميزان: ${foundWeighted.nameAr} (${scaleResult.weightKg} كجم)`
-          );
+          setLastScannedMsg(`⚖️ استيكر ميزان: ${foundWeighted.nameAr} (${scaleResult.weightKg} كجم)`);
         } else if (scaleResult.mode === "price" && scaleResult.embeddedPrice) {
           const calculatedKg = Number(
             (scaleResult.embeddedPrice / foundWeighted.basePrice).toFixed(3)
           );
           addToCart(foundWeighted, calculatedKg, `ميزان باركود (${scaleResult.embeddedPrice} ج.م)`);
-          setLastScannedMsg(
-            `⚖️ استيكر ميزان: ${foundWeighted.nameAr} (${scaleResult.embeddedPrice} ج.م)`
-          );
+          setLastScannedMsg(`⚖️ استيكر ميزان: ${foundWeighted.nameAr} (${scaleResult.embeddedPrice} ج.م)`);
         }
         setBarcodeQuery("");
-        return;
+        return true;
       }
     }
 
-    // Standard barcode or product name search
+    // 2. Standard Barcode or PLU or Name search
     const found = products.find(
       (p) =>
         p.barcode === query ||
@@ -259,8 +269,25 @@ export default function CashierPOSPage() {
         setLastScannedMsg(`📦 تم إضافة: ${found.nameAr}`);
       }
       setBarcodeQuery("");
-    } else {
-      alert(`لم يتم العثور على صنف بالباركود أو الاسم: ${query}`);
+      return true;
+    }
+
+    return false;
+  };
+
+  const handleBarcodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = processBarcode(barcodeQuery);
+    if (!success && barcodeQuery.trim()) {
+      alert(`لم يتم العثور على صنف بالباركود أو الاسم: ${barcodeQuery}`);
+    }
+  };
+
+  // Camera Barcode Scan Callback
+  const handleCameraBarcodeScanned = (barcode: string) => {
+    const success = processBarcode(barcode);
+    if (!success) {
+      setLastScannedMsg(`⚠️ باركود غير مسجل: ${barcode}`);
     }
   };
 
@@ -269,6 +296,7 @@ export default function CashierPOSPage() {
   );
   const totalItemCount = cart.reduce((acc, i) => acc + (i.product.isWeighted ? 1 : i.qty), 0);
 
+  // Fast Checkout Action
   const handleCheckout = async (paymentMethod: "cash" | "card") => {
     if (cart.length === 0) return;
     try {
@@ -312,6 +340,7 @@ export default function CashierPOSPage() {
         });
         setCart([]);
         setTenderCash(String(Math.ceil(subtotal)));
+        setMobileView("cart"); // Stay on receipt screen
       } else {
         alert("فشل إصدار الفاتورة: " + data.error);
       }
@@ -322,17 +351,64 @@ export default function CashierPOSPage() {
     }
   };
 
+  // Immediate Reset for Next Customer (Zero Printing Required)
+  const handleFinishAndNewOrder = () => {
+    setCompletedOrder(null);
+    setTenderCash("");
+    setCart([]);
+    setMobileView("products");
+    setLastScannedMsg("جاهز لاستقبال الزبون التالي 🛒");
+    setTimeout(() => {
+      barcodeInputRef.current?.focus();
+    }, 150);
+  };
+
+  // WhatsApp Digital Receipt
+  const sendWhatsAppReceipt = (order: any) => {
+    const phone = prompt("أدخل رقم واتساب العميل لإرسال الفاتورة (مثال: 01018671000):") || "";
+    const cleanPhone = phone.replace(/\D/g, "");
+    if (!cleanPhone) return;
+
+    const phoneWithCountry = cleanPhone.startsWith("20")
+      ? cleanPhone
+      : cleanPhone.startsWith("0")
+      ? "2" + cleanPhone
+      : "20" + cleanPhone;
+
+    let itemsText = "";
+    (order.parsedItems || []).forEach((it: any, idx: number) => {
+      itemsText += `\n${idx + 1}. *${it.nameAr}* (${it.qty} ${it.unit || "قطعة"})${
+        it.note ? ` [${it.note}]` : ""
+      } — ${it.total.toFixed(2)} ج.م`;
+    });
+
+    const msg = `*سوبر ماركت أولاد الشافعي* 🛒
+📍 الحي السادس — مدينة السادس من أكتوبر — الجيزة
+📞 01032104457 — 0111871017
+
+━━━━━━━━━━━━━━━━━━━
+🧾 *فاتورة إلكترونية معتمدة*
+📄 *رقم الفاتورة:* ${order.orderNumber}
+📅 *التاريخ:* ${new Date().toLocaleString("ar-EG")}
+💳 *طريقة الدفع:* ${order.paymentMethod === "cash" ? "نقداً (كاش)" : "بطاقة بنكية (فيزا)"}
+━━━━━━━━━━━━━━━━━━━
+*بيان المشتريات:*
+${itemsText}
+
+━━━━━━━━━━━━━━━━━━━
+💰 *الإجمالي النهائي المستحق:* *${order.total.toFixed(2)} ج.م*
+━━━━━━━━━━━━━━━━━━━
+
+✨ شكراً لتسوقكم من سوبر ماركت أولاد الشافعي!
+البضاعة ترد وتستبدل خلال 14 يوماً بموجب هذه الفاتورة.
+
+تم التطوير بواسطة شركة أوركا لتقنية المعلومات — 01018671000`;
+
+    window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
   const filteredProducts = products.filter((p) => {
     if (selectedCat !== "الكل" && p.category !== selectedCat) return false;
-    return true;
-  });
-
-  const weightedProducts = products.filter((p) => {
-    if (!p.isWeighted) return false;
-    if (weighSearch.trim()) {
-      return p.nameAr.toLowerCase().includes(weighSearch.toLowerCase()) ||
-             p.scaleItemCode?.includes(weighSearch);
-    }
     return true;
   });
 
@@ -342,56 +418,91 @@ export default function CashierPOSPage() {
   return (
     <div className="h-screen max-h-screen bg-[#f1f5f9] text-slate-800 flex flex-col overflow-hidden font-sans select-none">
       {/* Cashier Topbar */}
-      <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md shrink-0 border-b border-emerald-600/40">
-        <div className="flex items-center gap-3">
+      <header className="bg-slate-900 text-white px-3 sm:px-4 py-2.5 flex items-center justify-between shadow-md shrink-0 border-b border-emerald-600/40">
+        <div className="flex items-center gap-2 sm:gap-3">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-black">
               <ShoppingBag className="w-4 h-4" />
             </div>
-            <span className="font-black text-sm">سوبر ماركت أولاد الشافعي • نقطة البيع (POS)</span>
+            <span className="font-black text-xs sm:text-sm">سوبر ماركت أولاد الشافعي</span>
           </Link>
-          <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold">
-            كاشير فرع 6 أكتوبر (الحي السادس) 🖥️
+          <span className="hidden sm:inline-block text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+            كاشير 6 أكتوبر (الحي السادس) 🛒
           </span>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-1.5 sm:gap-2 text-xs">
+          {/* CAMERA SCANNER BUTTON (TOP BAR) */}
+          <button
+            onClick={() => setCameraScannerOpen(true)}
+            className="px-2.5 sm:px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-white font-black flex items-center gap-1.5 shadow-md transition-all active:scale-95 animate-pulse"
+            title="فتح كاميرا الموبايل لمسح الباركود مباشرة (F2)"
+          >
+            <Camera className="w-4 h-4" />
+            <span>سكان بالكاميرا 📱</span>
+          </button>
+
+          {/* F4 Weight Button */}
           <button
             onClick={openGenericWeighModal}
-            className="px-3 py-1 bg-amber-500/20 border border-amber-400/50 hover:bg-amber-500/30 rounded-lg text-amber-200 font-bold flex items-center gap-1.5 transition-colors"
+            className="px-2.5 sm:px-3 py-1.5 bg-amber-500/20 border border-amber-400/50 hover:bg-amber-500/30 rounded-lg text-amber-200 font-bold flex items-center gap-1 transition-colors"
             title="بيع أصناف الجبن واللحوم بالوزن أو بالمبلغ المفتوح (F4)"
           >
             <Coins className="w-3.5 h-3.5 text-amber-400" />
-            <span>بيع بالمبلغ / بالوزن (F4) ⚖️💰</span>
+            <span className="hidden md:inline">وزن/مبلغ</span>
+            <span>(F4)</span>
           </button>
 
           <Link
-            href="/scale"
-            className="px-3 py-1 bg-sky-500/20 border border-sky-400/40 hover:bg-sky-500/30 rounded-lg text-sky-200 font-bold flex items-center gap-1.5 transition-colors"
-          >
-            <Scale className="w-3.5 h-3.5" />
-            <span>محطة الميزان ⚖️</span>
-          </Link>
-
-          <Link
             href="/dashboard"
-            className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold"
+            className="hidden sm:inline-block px-2.5 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold"
           >
-            لوحة الإدارة
+            الإدارة
           </Link>
 
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 rounded-lg text-emerald-200">
+          <div className="flex items-center gap-1 px-2 py-1 bg-white/10 rounded-lg text-emerald-200 text-xs">
             <User className="w-3.5 h-3.5" />
             <span className="font-bold">{user ? user.name : "كاشير 1"}</span>
           </div>
         </div>
       </header>
 
+      {/* Mobile Mode Switcher Bar (Only on small screens) */}
+      <div className="md:hidden bg-slate-800 text-white p-1.5 flex gap-1 border-b border-slate-700 shrink-0">
+        <button
+          onClick={() => setMobileView("products")}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            mobileView === "products" ? "bg-emerald-600 text-white shadow" : "text-slate-300"
+          }`}
+        >
+          <ShoppingBag className="w-3.5 h-3.5" />
+          <span>الكتالوج والأصناف</span>
+        </button>
+        <button
+          onClick={() => setMobileView("cart")}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 relative ${
+            mobileView === "cart" ? "bg-emerald-600 text-white shadow" : "text-slate-300"
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>الفاتورة الحالية ({cart.length})</span>
+          {cart.length > 0 && (
+            <span className="bg-amber-400 text-slate-900 font-black px-1.5 rounded-full text-[10px]">
+              {subtotal.toFixed(0)} ج
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Main Full-Height POS Split View */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Right Section: Products Grid + Barcode Search */}
-        <div className="flex-1 flex flex-col p-3 overflow-hidden border-l border-slate-200">
-          {/* Barcode Search Bar & Quick Weigh Button */}
+        <div
+          className={`flex-1 flex flex-col p-2.5 sm:p-3 overflow-hidden border-l border-slate-200 ${
+            mobileView === "cart" ? "hidden md:flex" : "flex"
+          }`}
+        >
+          {/* Barcode Search Bar & Camera Button */}
           <div className="flex gap-2 mb-2 shrink-0">
             <form onSubmit={handleBarcodeSubmit} className="relative flex-1">
               <input
@@ -400,32 +511,44 @@ export default function CashierPOSPage() {
                 value={barcodeQuery}
                 onChange={(e) => setBarcodeQuery(e.target.value)}
                 placeholder="امسح الباركود، أو استيكر الميزان، أو اكتب اسم الصنف..."
-                className="w-full h-11 pl-4 pr-11 bg-white border-2 border-slate-300 focus:border-emerald-600 rounded-xl outline-none font-bold text-sm shadow-2xs"
+                className="w-full h-11 pl-4 pr-11 bg-white border-2 border-slate-300 focus:border-emerald-600 rounded-xl outline-none font-bold text-xs sm:text-sm shadow-xs"
                 autoFocus
               />
               <Barcode className="w-5 h-5 text-slate-400 absolute right-3.5 top-3" />
             </form>
 
+            {/* Quick Camera Scan Button */}
+            <button
+              type="button"
+              onClick={() => setCameraScannerOpen(true)}
+              className="px-3 sm:px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs flex items-center gap-1.5 shrink-0"
+              title="فتح كاميرا الموبايل"
+            >
+              <Camera className="w-4 h-4" />
+              <span className="hidden sm:inline">كاميرا</span>
+            </button>
+
+            {/* F4 Button */}
             <button
               onClick={openGenericWeighModal}
-              className="px-4 bg-amber-500 hover:bg-amber-600 text-slate-900 rounded-xl font-black text-xs shadow-sm flex items-center gap-1.5 shrink-0"
+              className="px-3 sm:px-4 bg-amber-500 hover:bg-amber-600 text-slate-900 rounded-xl font-black text-xs shadow-xs flex items-center gap-1 shrink-0"
               title="إدخال صنف وزني أو بمبلغ مالي مفتوح"
             >
               <Coins className="w-4 h-4" />
-              <span className="hidden sm:inline">وزن أو مبلغ</span>
+              <span className="hidden sm:inline">وزن/مبلغ</span>
               <span>(F4)</span>
             </button>
           </div>
 
           {/* Quick Notice if Barcode Scanned */}
           {lastScannedMsg && (
-            <div className="mb-2 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center justify-between shrink-0">
-              <span>{lastScannedMsg}</span>
+            <div className="mb-2 px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center justify-between shrink-0 animate-in fade-in">
+              <span className="truncate">{lastScannedMsg}</span>
               <button
                 onClick={() => setLastScannedMsg("")}
-                className="text-emerald-500 hover:text-emerald-800"
+                className="text-emerald-500 hover:text-emerald-800 mr-2"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
@@ -436,7 +559,7 @@ export default function CashierPOSPage() {
               onClick={() => setSelectedCat("الكل")}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-colors ${
                 selectedCat === "الكل"
-                  ? "bg-emerald-700 text-white shadow-2xs"
+                  ? "bg-emerald-700 text-white shadow-xs"
                   : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
               }`}
             >
@@ -448,7 +571,7 @@ export default function CashierPOSPage() {
                 onClick={() => setSelectedCat(c.nameAr)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1 transition-colors ${
                   selectedCat === c.nameAr
-                    ? "bg-emerald-700 text-white shadow-2xs"
+                    ? "bg-emerald-700 text-white shadow-xs"
                     : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
                 }`}
               >
@@ -459,14 +582,14 @@ export default function CashierPOSPage() {
           </div>
 
           {/* Products Grid with its own smooth internal scroll */}
-          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 pr-1">
+          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 pr-1 pb-16 md:pb-2">
             {filteredProducts.map((product) => {
               const inCartItem = cart.find((i) => i.product.id === product.id);
               return (
                 <button
                   key={product.id}
                   onClick={() => handleProductClick(product)}
-                  className={`bg-white rounded-xl p-2.5 border text-right flex flex-col justify-between transition-all active:scale-95 group shadow-2xs relative ${
+                  className={`bg-white rounded-xl p-2.5 border text-right flex flex-col justify-between transition-all active:scale-95 group shadow-xs relative ${
                     inCartItem
                       ? "border-emerald-600 ring-2 ring-emerald-600/20"
                       : "border-slate-200 hover:border-emerald-600"
@@ -516,21 +639,50 @@ export default function CashierPOSPage() {
               );
             })}
           </div>
+
+          {/* Floating Camera Button on Mobile Screen */}
+          <div className="md:hidden fixed bottom-4 left-4 z-40">
+            <button
+              type="button"
+              onClick={() => setCameraScannerOpen(true)}
+              className="w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-2xl border-2 border-white active:scale-95 transition-transform"
+              title="مسح باركود بالكاميرا"
+            >
+              <Camera className="w-7 h-7" />
+            </button>
+          </div>
         </div>
 
         {/* Left Section: Active Invoice Cart with PINNED Bottom Checkout */}
-        <div className="w-full md:w-96 bg-white flex flex-col justify-between shadow-xl h-full border-r border-slate-200">
+        <div
+          className={`w-full md:w-96 bg-white flex flex-col justify-between shadow-xl h-full border-r border-slate-200 ${
+            mobileView === "products" ? "hidden md:flex" : "flex"
+          }`}
+        >
           {/* Invoice Header */}
           <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
-            <div>
-              <h3 className="font-black text-sm text-slate-900 flex items-center gap-1.5">
-                <FileText className="w-4 h-4 text-emerald-700" />
-                <span>فاتورة العميل الحالية</span>
-              </h3>
-              <span className="text-[11px] text-slate-500">
-                عدد الأصناف: {cart.length} | إجمالي الكميات: {totalItemCount}
-              </span>
+            <div className="flex items-center gap-2">
+              {/* Back to Products Button on Mobile */}
+              <button
+                type="button"
+                onClick={() => setMobileView("products")}
+                className="md:hidden p-1.5 rounded-lg bg-slate-200 text-slate-700"
+                title="الرجوع للأصناف"
+              >
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              <div>
+                <h3 className="font-black text-sm text-slate-900 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-emerald-700" />
+                  <span>فاتورة العميل الحالية</span>
+                </h3>
+                <span className="text-[11px] text-slate-500">
+                  عدد الأصناف: {cart.length} | إجمالي الكميات: {totalItemCount}
+                </span>
+              </div>
             </div>
+
             {cart.length > 0 && (
               <button
                 onClick={() => setCart([])}
@@ -542,15 +694,23 @@ export default function CashierPOSPage() {
             )}
           </div>
 
-          {/* Invoice Items */}
+          {/* Invoice Items List */}
           <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
             {cart.length === 0 ? (
               <div className="text-center py-20 text-slate-400 space-y-2">
                 <ShoppingBag className="w-12 h-12 mx-auto text-slate-300" />
                 <p className="text-xs font-bold">الفاتورة فارغة</p>
                 <p className="text-[11px] text-slate-400">
-                  امسح الباركود، أو اضغط على الأصناف، أو استخدم زر بيع بالمبلغ/الوزن (F4)
+                  امسح الباركود، أو افتح الكاميرا (📱)، أو اختر الأصناف
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setCameraScannerOpen(true)}
+                  className="mt-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shadow"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>فتح سكانر الكاميرا الآن</span>
+                </button>
               </div>
             ) : (
               cart.map((item) => {
@@ -650,7 +810,16 @@ export default function CashierPOSPage() {
         </div>
       </div>
 
-      {/* WEIGHT & OPEN AMOUNT SELLING MODAL (حل معضلة البيع بالمبلغ أو الوزن) */}
+      {/* CAMERA BARCODE SCANNER MODAL */}
+      <CameraBarcodeScanner
+        isOpen={cameraScannerOpen}
+        onClose={() => setCameraScannerOpen(false)}
+        onScan={handleCameraBarcodeScanned}
+        lastScannedMessage={lastScannedMsg}
+        cartCount={cart.length}
+      />
+
+      {/* WEIGHT & OPEN AMOUNT SELLING MODAL */}
       {weighModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-md w-full p-5 shadow-2xl border-2 border-amber-500 space-y-4">
@@ -677,7 +846,7 @@ export default function CashierPOSPage() {
               </button>
             </div>
 
-            {/* Select Product if None or Wanting to change */}
+            {/* Select Product */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 الصنف المطلوب:
@@ -751,37 +920,42 @@ export default function CashierPOSPage() {
                   </button>
                 </div>
 
-                {/* Mode 1: Enter Amount (مثال: بـ 50 جنيه جبنة رومي) */}
+                {/* Mode 1: Amount */}
                 {weighMode === "amount" && (
                   <div className="space-y-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
-                        أدخل المبلغ المطلوب (ج.م):
+                        المبلغ المطلوب بالجنيه المصري (مثال: بـ 50 جنيه جبنة):
                       </label>
-                      <input
-                        type="number"
-                        value={inputAmount}
-                        onChange={(e) => setInputAmount(e.target.value)}
-                        placeholder="مثال: 50"
-                        className="w-full h-12 text-center text-xl font-black bg-white border-2 border-amber-400 focus:border-amber-600 rounded-xl outline-none"
-                        autoFocus
-                      />
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={inputAmount}
+                          onChange={(e) => setInputAmount(e.target.value)}
+                          className="w-full h-12 pr-4 pl-12 bg-white border-2 border-amber-500 rounded-xl font-black text-lg text-slate-900 outline-none"
+                          autoFocus
+                        />
+                        <span className="absolute left-3 top-3 text-sm font-bold text-slate-400">
+                          ج.م
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Quick Amount Buttons */}
-                    <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-                      {["10", "20", "30", "50", "100", "150", "200"].map((amt) => (
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {["10", "20", "30", "50", "100", "150", "200", "300"].map((v) => (
                         <button
-                          key={amt}
+                          key={v}
                           type="button"
-                          onClick={() => setInputAmount(amt)}
-                          className={`py-2 rounded-xl text-xs font-black border transition-all ${
-                            inputAmount === amt
-                              ? "bg-amber-500 text-slate-900 border-amber-600 shadow-xs"
-                              : "bg-slate-50 hover:bg-amber-100 border-slate-200 text-slate-800"
+                          onClick={() => setInputAmount(v)}
+                          className={`py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                            inputAmount === v
+                              ? "bg-amber-500 text-slate-900 border-amber-600"
+                              : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
                           }`}
                         >
-                          {amt} ج
+                          {v} ج
                         </button>
                       ))}
                     </div>
@@ -790,17 +964,17 @@ export default function CashierPOSPage() {
                     {(() => {
                       const amt = parseFloat(inputAmount) || 0;
                       const calculatedKg = amt / selectedWeighProduct.basePrice;
-                      const grams = Math.round(calculatedKg * 1000);
+                      const calculatedGrams = Math.round(calculatedKg * 1000);
                       return (
                         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center space-y-1">
                           <div className="text-xs text-slate-600">
-                            الوزن الفعلي المحسوب:
+                            الوزن المعادل للمبلغ المطلوب:
                           </div>
-                          <div className="text-lg font-black text-emerald-800 font-mono">
-                            {calculatedKg.toFixed(3)} كجم ({grams} جرام)
+                          <div className="text-xl font-black text-emerald-800 font-mono">
+                            {calculatedKg.toFixed(3)} كجم ({calculatedGrams} جرام)
                           </div>
                           <div className="text-[11px] text-emerald-700 font-bold">
-                            إجمالي القيمة: {amt.toFixed(2)} ج.م
+                            المبلغ المحسوب: {amt.toFixed(2)} ج.م
                           </div>
                         </div>
                       );
@@ -808,40 +982,48 @@ export default function CashierPOSPage() {
                   </div>
                 )}
 
-                {/* Mode 2: Enter Weight (مثال: ربع كيلو، تمن، نص كيلو) */}
+                {/* Mode 2: Weight */}
                 {weighMode === "weight" && (
                   <div className="space-y-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
-                        أدخل الوزن بالجرام:
+                        الوزن المطلوب بالجرام (مثلاً 250 جرام = ربع كيلو):
                       </label>
-                      <input
-                        type="number"
-                        value={inputGrams}
-                        onChange={(e) => setInputGrams(e.target.value)}
-                        placeholder="مثال: 250"
-                        className="w-full h-12 text-center text-xl font-black bg-white border-2 border-amber-400 focus:border-amber-600 rounded-xl outline-none"
-                        autoFocus
-                      />
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={1}
+                          step={10}
+                          value={inputGrams}
+                          onChange={(e) => setInputGrams(e.target.value)}
+                          className="w-full h-12 pr-4 pl-14 bg-white border-2 border-amber-500 rounded-xl font-black text-lg text-slate-900 outline-none"
+                          autoFocus
+                        />
+                        <span className="absolute left-3 top-3 text-sm font-bold text-slate-400">
+                          جرام
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Quick Gram Presets */}
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                    <div className="grid grid-cols-4 gap-1.5">
                       {[
                         { label: "100 جم", val: "100" },
-                        { label: "125 جم (تمن)", val: "125" },
-                        { label: "250 جم (ربع)", val: "250" },
-                        { label: "500 جم (نصف)", val: "500" },
-                        { label: "1000 جم (كيلو)", val: "1000" },
+                        { label: "1/8 كجم", val: "125" },
+                        { label: "ربع كيلو", val: "250" },
+                        { label: "نص كيلو", val: "500" },
+                        { label: "3/4 كجم", val: "750" },
+                        { label: "1 كجم", val: "1000" },
+                        { label: "1.5 كجم", val: "1500" },
+                        { label: "2 كجم", val: "2000" },
                       ].map((item) => (
                         <button
                           key={item.val}
                           type="button"
                           onClick={() => setInputGrams(item.val)}
-                          className={`py-2 px-1 rounded-xl text-xs font-black border transition-all text-center ${
+                          className={`py-1.5 rounded-lg text-xs font-bold border transition-colors ${
                             inputGrams === item.val
-                              ? "bg-amber-500 text-slate-900 border-amber-600 shadow-xs"
-                              : "bg-slate-50 hover:bg-amber-100 border-slate-200 text-slate-800"
+                              ? "bg-amber-500 text-slate-900 border-amber-600"
+                              : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
                           }`}
                         >
                           {item.label}
@@ -886,55 +1068,123 @@ export default function CashierPOSPage() {
         </div>
       )}
 
-      {/* COMPLETED ORDER & THERMAL RECEIPT MODAL */}
+      {/* COMPLETED ORDER & FAST CASHIER CHECKOUT (NO COMPULSORY PRINTING) */}
       {completedOrder && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 text-center space-y-4 shadow-2xl relative my-auto">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 text-center space-y-4 shadow-2xl relative my-auto border-2 border-emerald-500 animate-in zoom-in-95">
             {/* Success Header */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-6 h-6 text-emerald-600" />
                 <span className="font-black text-sm text-slate-900">
-                  تم إصدار الفاتورة بنجاح!
+                  تمت المحاسبة بنجاح!
                 </span>
               </div>
               <button
-                onClick={() => setCompletedOrder(null)}
+                onClick={handleFinishAndNewOrder}
                 className="p-1 text-slate-400 hover:text-slate-700"
+                title="إغلاق وفتح فاتورة جديدة"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Quick Tender / Change Calculator */}
-            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs grid grid-cols-3 gap-2 text-right">
-              <div>
-                <span className="text-[10px] text-slate-500">المطلوب:</span>
-                <div className="font-mono font-black text-sm text-emerald-800">
+            {/* Total and Change Math */}
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs space-y-2 text-right">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-600">المبلغ المطلوب:</span>
+                <span className="font-mono font-black text-lg text-slate-900">
                   {completedOrder.total.toFixed(2)} ج.م
-                </div>
+                </span>
               </div>
-              <div>
-                <span className="text-[10px] text-slate-500">المدفوع كاش:</span>
+
+              {/* Quick Cash Buttons */}
+              <div className="space-y-1 pt-1">
+                <span className="text-[10px] text-slate-500 font-bold block">
+                  المبلغ المدفوع من الزبون كاش:
+                </span>
+                <div className="grid grid-cols-4 gap-1">
+                  {[
+                    String(Math.ceil(completedOrder.total)),
+                    "50",
+                    "100",
+                    "200",
+                    "300",
+                    "500",
+                    "1000",
+                  ].map((v, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setTenderCash(v)}
+                      className={`py-1 rounded-lg text-xs font-mono font-bold border transition ${
+                        tenderCash === v
+                          ? "bg-emerald-600 text-white border-emerald-700"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      {i === 0 ? "بالمضبوط" : `${v} ج`}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="number"
+                  placeholder="أو اكتب المبلغ المدفوع..."
                   value={tenderCash}
                   onChange={(e) => setTenderCash(e.target.value)}
-                  className="w-full h-7 bg-white border border-slate-300 rounded px-1.5 font-mono font-black text-xs text-slate-800"
+                  className="w-full h-9 bg-white border border-slate-300 rounded-xl px-2.5 font-mono font-black text-xs text-slate-800 text-center outline-none focus:border-emerald-600 mt-1"
                 />
               </div>
-              <div>
-                <span className="text-[10px] text-slate-500">الباقي للعميل:</span>
-                <div className="font-mono font-black text-sm text-emerald-600">
+
+              {/* Calculated Change */}
+              <div className="flex justify-between items-center p-2 rounded-xl bg-emerald-100/70 border border-emerald-300">
+                <span className="text-xs font-black text-emerald-950">
+                  الباقي للزبون:
+                </span>
+                <span className="font-mono font-black text-base text-emerald-900">
                   {changeAmount.toFixed(2)} ج.م
-                </div>
+                </span>
               </div>
             </div>
 
-            {/* REALISTIC 80mm THERMAL RECEIPT PREVIEW */}
+            {/* ACTION 1: ZERO PRINTING - FINISH & NEW ORDER (BIGGEST BUTTON) */}
+            <button
+              onClick={handleFinishAndNewOrder}
+              className="w-full py-4 bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-98 transition-all"
+            >
+              <Zap className="w-5 h-5 text-amber-300 animate-bounce" />
+              <span>إنهاء ومحاسبة وفتح فاتورة جديدة فوراً (Esc) ⚡</span>
+            </button>
+
+            {/* ACTION 2 & 3: WhatsApp Receipt or Print Receipt */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {/* WhatsApp Digital Receipt */}
+              <button
+                type="button"
+                onClick={() => sendWhatsAppReceipt(completedOrder)}
+                className="py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                title="إرسال الفاتورة عبر واتساب للزبون"
+              >
+                <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>إرسال واتساب للزبون</span>
+              </button>
+
+              {/* Thermal Print (Optional for when printer is available) */}
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                title="طباعة إيصال ورقي حراري"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>طباعة ورقية (F9)</span>
+              </button>
+            </div>
+
+            {/* REALISTIC 80mm THERMAL RECEIPT PREVIEW (Hidden in compact mobile view, visible in print) */}
             <div
               id="thermal-receipt"
-              className="bg-white text-black p-4 rounded border border-slate-300 font-mono text-xs text-right max-h-72 overflow-y-auto shadow-inner select-text"
+              className="hidden print:block bg-white text-black p-4 rounded border border-slate-300 font-mono text-xs text-right select-text"
               dir="rtl"
             >
               {/* Receipt Header */}
@@ -1048,26 +1298,6 @@ export default function CashierPOSPage() {
                   تم التطوير بواسطة شركة أوركا لتقنية المعلومات — 01018671000
                 </div>
               </div>
-            </div>
-
-            {/* Print & Action Buttons */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => window.print()}
-                className="flex-1 py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-black shadow-md flex items-center justify-center gap-1.5 active:scale-98"
-              >
-                <Printer className="w-4 h-4" />
-                <span>طباعة الإيصال (F9 / Enter)</span>
-              </button>
-              <button
-                onClick={() => {
-                  setCompletedOrder(null);
-                  setTenderCash("");
-                }}
-                className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold"
-              >
-                فاتورة جديدة (Esc)
-              </button>
             </div>
           </div>
         </div>
